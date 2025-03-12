@@ -2,6 +2,7 @@ package com.example.myapplicationbb;
 
 
 import android.Manifest;
+import android.annotation.SuppressLint;
 import android.app.Activity;
 import android.app.AlertDialog;
 import android.content.Context;
@@ -77,6 +78,7 @@ public class CameraFragment extends Fragment implements SensorEventListener {
         return inflater.inflate(R.layout.fragment_camera, container, false);
     }
 
+    @SuppressLint("ClickableViewAccessibility")
     @Override
     public void onViewCreated(@NonNull View view, @Nullable Bundle savedInstanceState) {
         super.onViewCreated(view, savedInstanceState);
@@ -126,6 +128,24 @@ public class CameraFragment extends Fragment implements SensorEventListener {
         confirmPointsButton.setOnClickListener(v -> {
             submitButton.setVisibility(View.VISIBLE);
             confirmPointsButton.setEnabled(false);
+
+            // 确认选点后，清除之前的标记并重新绘制，以确保标记点与图片位置同步
+            ViewGroup parentView = (ViewGroup) photoPreview.getParent();
+            if (parentView instanceof ViewGroup) {
+                // 找到所有标记并移除
+                for (int i = 0; i < parentView.getChildCount(); i++) {
+                    View child = parentView.getChildAt(i);
+                    if (child instanceof ImageView && child.getId() != R.id.photo_preview) {
+                        parentView.removeView(child);
+                        i--; // 因为移除了一个元素，所以索引需要减一
+                    }
+                }
+            }
+
+            // 重新绘制所有选中的点
+            for (float[] point : selectedPoints) {
+                drawPointOnImage(point);
+            }
         });
 
         submitButton.setOnClickListener(v -> submitMeasurement());
@@ -283,7 +303,12 @@ public class CameraFragment extends Fragment implements SensorEventListener {
                     @Override
                     public void onFailure(@NonNull Call call, @NonNull IOException e) {
                         requireActivity().runOnUiThread(() -> {
-                            Toast.makeText(requireContext(), "提交失败：" + e.getMessage(), Toast.LENGTH_SHORT).show();
+                            // 使用AlertDialog代替Toast，显示更详细的错误信息
+                            new AlertDialog.Builder(requireContext())
+                                    .setTitle("提交失败")
+                                    .setMessage("错误信息：" + e.getMessage())
+                                    .setPositiveButton("确定", null)
+                                    .show();
                         });
                     }
 
@@ -403,9 +428,12 @@ public class CameraFragment extends Fragment implements SensorEventListener {
             // 将标记添加到与photoPreview相同的父视图中
             cardView.addView(marker, params);
 
+            // 调整点的位置，考虑图片在ImageView中的实际显示情况
+            float[] adjustedPoint = adjustPointToPhotoPreview(point);
+
             // 设置标记的位置，使其覆盖在photoPreview上的触摸点
-            marker.setX(point[0] - markerSize / 2);
-            marker.setY(point[1] - markerSize / 2);
+            marker.setX(adjustedPoint[0] - markerSize / 2);
+            marker.setY(adjustedPoint[1] - markerSize / 2);
 
             // 确保标记在最上层显示
             marker.bringToFront();
@@ -443,12 +471,18 @@ public class CameraFragment extends Fragment implements SensorEventListener {
         float offsetX = (viewWidth - scaledWidth) / 2;
         float offsetY = (viewHeight - scaledHeight) / 2;
 
-        // 调整点的坐标，修正计算方法
-        return new float[]{
-                offsetX + (point[0] / viewWidth) * scaledWidth,
-                offsetY + (point[1] / viewHeight) * scaledHeight
-        };
+        // 检查点是否在图片显示区域内
+        if (point[0] < offsetX || point[0] > offsetX + scaledWidth ||
+                point[1] < offsetY || point[1] > offsetY + scaledHeight) {
+            // 如果点不在图片显示区域内，将其限制在图片边界内
+            point[0] = Math.max(offsetX, Math.min(point[0], offsetX + scaledWidth));
+            point[1] = Math.max(offsetY, Math.min(point[1], offsetY + scaledHeight));
+        }
+
+        // 直接返回调整后的坐标，因为我们已经在drawPointOnImage中使用了这些坐标
+        return point;
     }
+
 
     /**
      * 显示提交参数的对话框
