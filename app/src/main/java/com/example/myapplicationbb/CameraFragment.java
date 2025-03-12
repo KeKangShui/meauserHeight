@@ -2,7 +2,6 @@ package com.example.myapplicationbb;
 
 
 import android.Manifest;
-import android.annotation.SuppressLint;
 import android.app.Activity;
 import android.app.AlertDialog;
 import android.content.Context;
@@ -14,6 +13,8 @@ import android.hardware.SensorEventListener;
 import android.hardware.SensorManager;
 import android.net.Uri;
 import android.os.Bundle;
+import android.os.Handler;
+import android.os.Looper;
 import android.provider.MediaStore;
 import android.view.LayoutInflater;
 import android.view.View;
@@ -72,19 +73,29 @@ public class CameraFragment extends Fragment implements SensorEventListener {
     private static final String[] REQUIRED_PERMISSIONS = new String[]{Manifest.permission.CAMERA};
     private ActivityResultLauncher<Intent> galleryLauncher;
 
+    // 相机初始化相关
+    private View cameraLoadingContainer;
+    private boolean isCameraInitialized = false;
+    private static final int CAMERA_INIT_DELAY = 300; // 延迟初始化时间（毫秒）
+    private ProcessCameraProvider cameraProvider;
+    private Handler mainHandler = new Handler(Looper.getMainLooper());
+
     @Nullable
     @Override
     public View onCreateView(@NonNull LayoutInflater inflater, @Nullable ViewGroup container, @Nullable Bundle savedInstanceState) {
         return inflater.inflate(R.layout.fragment_camera, container, false);
     }
 
-    @SuppressLint("ClickableViewAccessibility")
     @Override
     public void onViewCreated(@NonNull View view, @Nullable Bundle savedInstanceState) {
         super.onViewCreated(view, savedInstanceState);
         previewView = view.findViewById(R.id.preview_view);
-        // 确保相机预览视图可见
-        previewView.setVisibility(View.VISIBLE);
+        // 初始化相机加载UI
+        cameraLoadingContainer = view.findViewById(R.id.camera_loading_container);
+        // 初始时隐藏预览视图，显示加载UI
+        previewView.setVisibility(View.GONE);
+        cameraLoadingContainer.setVisibility(View.VISIBLE);
+
         photoPreview = view.findViewById(R.id.photo_preview);
         distanceInput = view.findViewById(R.id.distance_input);
         confirmPointsButton = view.findViewById(R.id.confirm_points_button);
@@ -194,27 +205,61 @@ public class CameraFragment extends Fragment implements SensorEventListener {
     }
 
     private void startCamera() {
-        ListenableFuture<ProcessCameraProvider> cameraProviderFuture = ProcessCameraProvider.getInstance(requireContext());
+        // 显示加载UI
+        previewView.setVisibility(View.GONE);
+        cameraLoadingContainer.setVisibility(View.VISIBLE);
 
-        cameraProviderFuture.addListener(() -> {
-            try {
-                ProcessCameraProvider cameraProvider = cameraProviderFuture.get();
-                Preview preview = new Preview.Builder().build();
-                preview.setSurfaceProvider(previewView.getSurfaceProvider());
-
-                imageCapture = new ImageCapture.Builder()
-                        .setCaptureMode(ImageCapture.CAPTURE_MODE_MINIMIZE_LATENCY)
-                        .build();
-
-                CameraSelector cameraSelector = CameraSelector.DEFAULT_BACK_CAMERA;
-
-                cameraProvider.unbindAll();
-                cameraProvider.bindToLifecycle(getViewLifecycleOwner(), cameraSelector, preview, imageCapture);
-
-            } catch (ExecutionException | InterruptedException e) {
-                Toast.makeText(requireContext(), "无法启动相机", Toast.LENGTH_SHORT).show();
+        // 延迟初始化相机，给系统一些时间准备相机资源
+        mainHandler.postDelayed(() -> {
+            if (!isAdded() || getActivity() == null || getActivity().isFinishing()) {
+                return; // Fragment已经分离，不继续初始化
             }
-        }, ContextCompat.getMainExecutor(requireContext()));
+
+            ListenableFuture<ProcessCameraProvider> cameraProviderFuture = ProcessCameraProvider.getInstance(requireContext());
+
+            cameraProviderFuture.addListener(() -> {
+                try {
+                    if (!isAdded()) return; // 再次检查Fragment是否仍然附加到Activity
+
+                    cameraProvider = cameraProviderFuture.get();
+                    Preview preview = new Preview.Builder().build();
+                    preview.setSurfaceProvider(previewView.getSurfaceProvider());
+
+                    imageCapture = new ImageCapture.Builder()
+                            .setCaptureMode(ImageCapture.CAPTURE_MODE_MINIMIZE_LATENCY)
+                            .build();
+
+                    CameraSelector cameraSelector = CameraSelector.DEFAULT_BACK_CAMERA;
+
+                    cameraProvider.unbindAll();
+                    cameraProvider.bindToLifecycle(getViewLifecycleOwner(), cameraSelector, preview, imageCapture);
+
+                    // 相机初始化成功，隐藏加载UI，显示预览
+                    previewView.setVisibility(View.VISIBLE);
+                    cameraLoadingContainer.setVisibility(View.GONE);
+                    isCameraInitialized = true;
+
+                } catch (ExecutionException | InterruptedException e) {
+                    // 更详细的错误处理
+                    String errorMessage = "无法启动相机: " + e.getMessage();
+                    if (isAdded()) {
+                        new AlertDialog.Builder(requireContext())
+                                .setTitle("相机初始化失败")
+                                .setMessage(errorMessage)
+                                .setPositiveButton("重试", (dialog, which) -> {
+                                    startCamera(); // 重试初始化相机
+                                })
+                                .setNegativeButton("取消", (dialog, which) -> {
+                                    // 返回上一个Fragment
+                                    if (getActivity() != null) {
+                                        getActivity().getSupportFragmentManager().popBackStack();
+                                    }
+                                })
+                                .show();
+                    }
+                }
+            }, ContextCompat.getMainExecutor(requireContext()));
+        }, CAMERA_INIT_DELAY);
     }
 
     private void takePhoto() {
@@ -361,12 +406,39 @@ public class CameraFragment extends Fragment implements SensorEventListener {
     public void onResume() {
         super.onResume();
         sensorManager.registerListener(this, accelerometer, SensorManager.SENSOR_DELAY_NORMAL);
+
+        // 如果相机尚未初始化且Fragment已经可见，则初始化相机
+        if (!isCameraInitialized && isAdded() && getUserVisibleHint()) {
+            if (allPermissionsGranted()) {
+                startCamera();
+            } else {
+                ActivityCompat.requestPermissions(requireActivity(), REQUIRED_PERMISSIONS, REQUEST_CODE_PERMISSIONS);
+            }
+        }
     }
 
     @Override
     public void onPause() {
         super.onPause();
         sensorManager.unregisterListener(this);
+    }
+
+    @Override
+    public void onStop() {
+        super.onStop();
+        // 在Fragment停止时释放相机资源
+        if (cameraProvider != null) {
+            cameraProvider.unbindAll();
+        }
+    }
+
+    @Override
+    public void onDestroy() {
+        super.onDestroy();
+        // 移除所有待处理的Handler回调，防止内存泄漏
+        if (mainHandler != null) {
+            mainHandler.removeCallbacksAndMessages(null);
+        }
     }
 
     @Override
