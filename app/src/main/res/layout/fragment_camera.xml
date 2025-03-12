@@ -13,6 +13,31 @@
         app:layout_constraintTop_toTopOf="parent"
         app:layout_constraintBottom_toTopOf="@id/controls_container" />
 
+    <FrameLayout
+        android:id="@+id/camera_loading_container"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:background="@color/background_color"
+        android:visibility="gone"
+        app:layout_constraintTop_toTopOf="parent"
+        app:layout_constraintBottom_toTopOf="@id/controls_container">
+
+        <ProgressBar
+            android:id="@+id/camera_loading_progress"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="center" />
+
+        <TextView
+            android:id="@+id/camera_loading_text"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="center"
+            android:layout_marginTop="48dp"
+            android:text="正在初始化相机..."
+            android:textSize="16sp" />
+    </FrameLayout>
+
     <com.google.android.material.card.MaterialCardView
         android:id="@+id/photo_preview_container"
         android:layout_width="match_parent"
