@@ -1,0 +1,8 @@
+<resources>
+    <string name="app_name">测量身高</string>
+    <string name="home">首页</string>
+    <string name="measure">测量</string>
+    <string name="history">历史</string>
+    <string name="setting">设置</string>
+
+</resources>

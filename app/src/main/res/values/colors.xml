@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="white">#FFFFFF</color>
+    <color name="black">#000000</color>
+    <color name="primary">#2196F3</color>
+    <color name="primary_dark">#1976D2</color>
+    <color name="accent">#FF4081</color>
+    <color name="bottom_nav_colors">#757575</color>
+    <color name="background_color">#F5F5F5</color>
+    <!-- 底部导航栏颜色选择器 -->
+<!--    <selector xmlns:android="http://schemas.android.com/apk/res/android" name="bottom_nav_colors">-->
+<!--        <item android:state_checked="true" android:color="@color/primary" />-->
+<!--        <item android:color="#757575" />-->
+<!--    </selector>-->
+</resources>
+

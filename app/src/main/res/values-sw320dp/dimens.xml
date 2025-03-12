@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <dimen name="point_marker_size">24dp</dimen>
+    <dimen name="control_container_padding">16dp</dimen>
+    <dimen name="card_margin">8dp</dimen>
+    <dimen name="card_corner_radius">12dp</dimen>
+    <dimen name="card_elevation">4dp</dimen>
+    <dimen name="input_layout_width">200dp</dimen>
+    <dimen name="button_margin_top">16dp</dimen>
+    <dimen name="button_margin">8dp</dimen>
+
+    <dimen name="chart_padding">16dp</dimen>
+    <dimen name="history_margin">16dp</dimen>
+    <dimen name="list_padding">8dp</dimen>
+</resources>
