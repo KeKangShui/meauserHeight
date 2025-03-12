@@ -13,7 +13,8 @@ import java.io.InputStream;
 import java.util.List;
 
 public class MeasurementApi {
-    private static final String BASE_URL = "http://192.168.3.248:8000/measure_height/";
+//    private static final String BASE_URL = "http://172.30.79.114:8000/measure_height/";
+    private static final String BASE_URL = "http://192.168.3.248:8000";
     private final OkHttpClient client;
     private final Gson gson;
 
@@ -110,7 +111,7 @@ public class MeasurementApi {
                     .build();
 
             Request request = new Request.Builder()
-                    .url(BASE_URL + "measure_height/")
+                    .url(BASE_URL + "/measure_height/")
                     .post(requestBody)
                     .build();
 

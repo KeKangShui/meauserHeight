@@ -70,7 +70,7 @@
             android:layout_width="@dimen/input_layout_width"
             android:layout_height="wrap_content"
             android:hint="拍摄距离"
-            app:helperText="请输入您与拍摄对象的距离（米）"
+            app:helperText="请输入您与拍摄对象的距离（里面）"
             app:endIconMode="clear_text"
             app:errorEnabled="true"
             style="@style/Widget.MaterialComponents.TextInputLayout.OutlinedBox"

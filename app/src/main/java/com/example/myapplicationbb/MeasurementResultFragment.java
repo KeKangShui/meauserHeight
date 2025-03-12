@@ -11,6 +11,8 @@ import android.widget.Toast;
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 import androidx.fragment.app.Fragment;
+
+import com.example.myapplicationbb.data.MeasurementDatabase;
 import com.google.gson.Gson;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
@@ -78,7 +80,25 @@ public class MeasurementResultFragment extends Fragment {
     }
 
     private void saveResult() {
-        // TODO: 实现保存结果到本地数据库的功能
-        Toast.makeText(requireContext(), "结果已保存", Toast.LENGTH_SHORT).show();
+        // 保存测量结果到本地数据库
+        if (measuredHeight > 0) {
+            try {
+                // 获取数据库实例并保存记录
+                boolean success = MeasurementDatabase
+                        .getInstance(requireContext())
+                        .saveMeasurement(measuredHeight);
+
+                if (success) {
+                    Toast.makeText(requireContext(), "测量结果已成功保存", Toast.LENGTH_SHORT).show();
+                } else {
+                    Toast.makeText(requireContext(), "保存失败，请重试", Toast.LENGTH_SHORT).show();
+                }
+            } catch (Exception e) {
+                Toast.makeText(requireContext(), "保存过程中出错: " + e.getMessage(), Toast.LENGTH_SHORT).show();
+                e.printStackTrace();
+            }
+        } else {
+            Toast.makeText(requireContext(), "无效的测量结果，无法保存", Toast.LENGTH_SHORT).show();
+        }
     }
 }
