@@ -2,25 +2,29 @@ package com.example.myapplicationbb;
 
 
 import android.Manifest;
-import com.example.myapplicationbb.network.MeasurementApi;
-
-import android.annotation.SuppressLint;
 import android.app.Activity;
-import android.content.ContentValues;
+import android.app.AlertDialog;
 import android.content.Context;
+import android.content.Intent;
 import android.content.pm.PackageManager;
-import android.os.Build;
+import android.hardware.Sensor;
+import android.hardware.SensorEvent;
+import android.hardware.SensorEventListener;
+import android.hardware.SensorManager;
+import android.net.Uri;
 import android.os.Bundle;
-import android.os.Environment;
+import android.provider.MediaStore;
 import android.view.LayoutInflater;
-import android.view.MotionEvent;
 import android.view.View;
 import android.view.ViewGroup;
-import android.widget.Toast;
 import android.view.MotionEvent;
+import android.widget.Button;
+import android.widget.EditText;
+import android.widget.ImageView;
+import android.widget.ScrollView;
+import android.widget.TextView;
+import android.widget.Toast;
 import androidx.constraintlayout.widget.ConstraintLayout;
-import android.util.Log;
-
 import androidx.activity.result.ActivityResultLauncher;
 import androidx.activity.result.contract.ActivityResultContracts;
 import androidx.annotation.NonNull;
@@ -35,29 +39,19 @@ import androidx.core.app.ActivityCompat;
 import androidx.core.content.ContextCompat;
 import androidx.fragment.app.Fragment;
 import com.google.common.util.concurrent.ListenableFuture;
+import com.example.myapplicationbb.network.MeasurementApi;
+import okhttp3.Call;
+import okhttp3.Callback;
+import okhttp3.Response;
 import java.io.File;
+import java.io.IOException;
 import java.text.SimpleDateFormat;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Locale;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Executor;
 import java.util.concurrent.Executors;
-import android.content.Intent;
-import android.hardware.Sensor;
-import android.hardware.SensorEvent;
-import android.hardware.SensorEventListener;
-import android.hardware.SensorManager;
-import android.net.Uri;
-import android.provider.MediaStore;
-import android.widget.Button;
-import android.widget.EditText;
-import android.widget.ImageView;
-import okhttp3.Call;
-import okhttp3.Callback;
-import okhttp3.Response;
-import java.io.IOException;
-import java.util.ArrayList;
-import java.util.List;
-
 
 public class CameraFragment extends Fragment implements SensorEventListener {
     private PreviewView previewView;
@@ -87,12 +81,13 @@ public class CameraFragment extends Fragment implements SensorEventListener {
     public void onViewCreated(@NonNull View view, @Nullable Bundle savedInstanceState) {
         super.onViewCreated(view, savedInstanceState);
         previewView = view.findViewById(R.id.preview_view);
+        // 确保相机预览视图可见
+        previewView.setVisibility(View.VISIBLE);
         photoPreview = view.findViewById(R.id.photo_preview);
         distanceInput = view.findViewById(R.id.distance_input);
         confirmPointsButton = view.findViewById(R.id.confirm_points_button);
         Button submitButton = view.findViewById(R.id.submit_button);
         Button retakeButton = view.findViewById(R.id.retake_button);
-        Button galleryButton = view.findViewById(R.id.gallery_button);
 
         selectedPoints = new ArrayList<>();
         gravity = new float[3];
@@ -100,30 +95,6 @@ public class CameraFragment extends Fragment implements SensorEventListener {
 
         sensorManager = (SensorManager) requireContext().getSystemService(Context.SENSOR_SERVICE);
         accelerometer = sensorManager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER);
-
-        // 添加重拍按钮点击事件
-        retakeButton.setOnClickListener(v -> {
-            // 清除当前照片和选点状态
-            currentPhotoUri = null;
-            selectedPoints.clear();
-            // 移除所有标记点
-            ViewGroup cardView = (ViewGroup) photoPreview.getParent();
-            for (int i = cardView.getChildCount() - 1; i >= 0; i--) {
-                View child = cardView.getChildAt(i);
-                if (child instanceof ImageView && child != photoPreview) {
-                    cardView.removeView(child);
-                }
-            }
-            // 重置按钮状态
-            confirmPointsButton.setVisibility(View.GONE);
-            confirmPointsButton.setEnabled(true);
-            submitButton.setVisibility(View.GONE);
-            // 切换回相机预览
-            previewView.setVisibility(View.VISIBLE);
-            View photoPreviewContainer = requireView().findViewById(R.id.photo_preview_container);
-            photoPreviewContainer.setVisibility(View.GONE);
-            photoPreview.setVisibility(View.GONE);
-        });
 
         // 添加图片点击事件监听
         photoPreview.setOnTouchListener((v, event) -> {
@@ -133,11 +104,15 @@ public class CameraFragment extends Fragment implements SensorEventListener {
                     return true;
                 }
 
+                // 记录触摸点坐标
                 float[] point = new float[]{event.getX(), event.getY()};
                 selectedPoints.add(point);
 
                 // 在图片上显示选中的点
                 drawPointOnImage(point);
+
+                // 显示调试信息
+                Toast.makeText(requireContext(), "已添加点: (" + point[0] + ", " + point[1] + ")", Toast.LENGTH_SHORT).show();
 
                 if (selectedPoints.size() == 2) {
                     confirmPointsButton.setVisibility(View.VISIBLE);
@@ -155,6 +130,31 @@ public class CameraFragment extends Fragment implements SensorEventListener {
 
         submitButton.setOnClickListener(v -> submitMeasurement());
 
+        // 添加重新拍摄按钮的点击事件
+        retakeButton.setOnClickListener(v -> {
+            // 重置UI状态
+            previewView.setVisibility(View.VISIBLE);
+            View photoPreviewContainer = requireView().findViewById(R.id.photo_preview_container);
+            photoPreviewContainer.setVisibility(View.GONE);
+            photoPreview.setVisibility(View.GONE);
+            selectedPoints.clear();
+            confirmPointsButton.setVisibility(View.GONE);
+            confirmPointsButton.setEnabled(true);
+            submitButton.setVisibility(View.GONE);
+
+            // 清除之前添加的标记
+            ViewGroup parentView = (ViewGroup) photoPreview.getParent();
+            if (parentView instanceof ViewGroup) {
+                for (int i = 0; i < parentView.getChildCount(); i++) {
+                    View child = parentView.getChildAt(i);
+                    if (child instanceof ImageView && child.getId() != R.id.photo_preview) {
+                        parentView.removeView(child);
+                        i--;
+                    }
+                }
+            }
+        });
+
         galleryLauncher = registerForActivityResult(new ActivityResultContracts.StartActivityForResult(),
                 result -> {
                     if (result.getResultCode() == Activity.RESULT_OK && result.getData() != null) {
@@ -163,38 +163,20 @@ public class CameraFragment extends Fragment implements SensorEventListener {
                     }
                 });
 
-        // 添加从相册选择图片的点击事件
-        galleryButton.setOnClickListener(v -> openGallery());
-
-        view.findViewById(R.id.capture_button).setOnClickListener(v -> takePhoto());
-
-        // 检查权限并延迟初始化相机，确保视图已准备好
         if (allPermissionsGranted()) {
-            // 延迟初始化相机，确保PreviewView已完全准备好
-            previewView.post(() -> {
-                if (isAdded() && !isDetached() && !isRemoving()) {
-                    startCamera();
-                }
-            });
+            startCamera();
         } else {
             ActivityCompat.requestPermissions(requireActivity(), REQUIRED_PERMISSIONS, REQUEST_CODE_PERMISSIONS);
         }
+
+        view.findViewById(R.id.capture_button).setOnClickListener(v -> takePhoto());
+        view.findViewById(R.id.gallery_button).setOnClickListener(v -> openGallery());
     }
 
     private void startCamera() {
-        // 添加额外的安全检查，确保Fragment仍然附加到Activity
-        if (!isAdded() || isDetached() || isRemoving()) {
-            return;
-        }
-
         ListenableFuture<ProcessCameraProvider> cameraProviderFuture = ProcessCameraProvider.getInstance(requireContext());
 
         cameraProviderFuture.addListener(() -> {
-            // 再次检查Fragment状态，避免在异步回调中Fragment已被销毁
-            if (!isAdded() || isDetached() || isRemoving()) {
-                return;
-            }
-
             try {
                 ProcessCameraProvider cameraProvider = cameraProviderFuture.get();
                 Preview preview = new Preview.Builder().build();
@@ -210,9 +192,7 @@ public class CameraFragment extends Fragment implements SensorEventListener {
                 cameraProvider.bindToLifecycle(getViewLifecycleOwner(), cameraSelector, preview, imageCapture);
 
             } catch (ExecutionException | InterruptedException e) {
-                if (isAdded() && !isDetached() && !isRemoving()) {
-                    Toast.makeText(requireContext(), "无法启动相机", Toast.LENGTH_SHORT).show();
-                }
+                Toast.makeText(requireContext(), "无法启动相机", Toast.LENGTH_SHORT).show();
             }
         }, ContextCompat.getMainExecutor(requireContext()));
     }
@@ -257,7 +237,22 @@ public class CameraFragment extends Fragment implements SensorEventListener {
         photoPreviewContainer.setVisibility(View.VISIBLE);
         photoPreview.setVisibility(View.VISIBLE);
         photoPreview.setImageURI(currentPhotoUri);
+
+        // 清除之前的选点
         selectedPoints.clear();
+
+        // 清除之前添加的标记
+        ViewGroup parentView = (ViewGroup) photoPreview.getParent();
+        if (parentView instanceof ViewGroup) {
+            // 找到所有标记并移除
+            for (int i = 0; i < parentView.getChildCount(); i++) {
+                View child = parentView.getChildAt(i);
+                if (child instanceof ImageView && child.getId() != R.id.photo_preview) {
+                    parentView.removeView(child);
+                    i--; // 因为移除了一个元素，所以索引需要减一
+                }
+            }
+        }
     }
 
     private void submitMeasurement() {
@@ -273,6 +268,9 @@ public class CameraFragment extends Fragment implements SensorEventListener {
         }
 
         float knownDistance = Float.parseFloat(distanceStr);
+
+        // 显示提交参数的日志
+        showSubmitParamsDialog(currentPhotoUri, selectedPoints, gravity, knownDistance);
 
         MeasurementApi api = new MeasurementApi();
         api.submitMeasurement(
@@ -291,9 +289,14 @@ public class CameraFragment extends Fragment implements SensorEventListener {
 
                     @Override
                     public void onResponse(@NonNull Call call, @NonNull Response response) throws IOException {
-                        String responseBody = response.body().string();
+                        final String responseBody = response.body().string();
                         requireActivity().runOnUiThread(() -> {
                             try {
+                                // 检查Fragment是否仍然附加到Activity
+                                if (!isAdded()) {
+                                    return;
+                                }
+
                                 // 创建并显示结果Fragment
                                 MeasurementResultFragment resultFragment = new MeasurementResultFragment();
                                 Bundle args = new Bundle();
@@ -301,16 +304,25 @@ public class CameraFragment extends Fragment implements SensorEventListener {
                                 resultFragment.setArguments(args);
 
                                 // 导航到结果页面
-                                if (isAdded() && !isRemoving()) {
-                                    requireActivity().getSupportFragmentManager()
+                                if (getActivity() != null && !getActivity().isFinishing()) {
+                                    getActivity().getSupportFragmentManager()
                                             .beginTransaction()
                                             .replace(R.id.nav_host_fragment, resultFragment)
                                             .addToBackStack(null)
                                             .commit();
                                 }
+
+                                // 重置UI状态
+                                previewView.setVisibility(View.VISIBLE);
+                                View photoPreviewContainer = requireView().findViewById(R.id.photo_preview_container);
+                                photoPreviewContainer.setVisibility(View.GONE);
+                                photoPreview.setVisibility(View.GONE);
+                                selectedPoints.clear();
+                                confirmPointsButton.setVisibility(View.GONE);
+                                confirmPointsButton.setEnabled(true);
+                                distanceInput.setText("");
                             } catch (Exception e) {
-                                Log.e("CameraFragment", "Error navigating to result fragment", e);
-                                Toast.makeText(requireContext(), "处理结果时发生错误", Toast.LENGTH_SHORT).show();
+                                Toast.makeText(requireContext(), "处理结果时出错: " + e.getMessage(), Toast.LENGTH_SHORT).show();
                             }
                         });
                     }
@@ -359,12 +371,7 @@ public class CameraFragment extends Fragment implements SensorEventListener {
     public void onRequestPermissionsResult(int requestCode, @NonNull String[] permissions, @NonNull int[] grantResults) {
         if (requestCode == REQUEST_CODE_PERMISSIONS) {
             if (allPermissionsGranted()) {
-                // 使用延迟初始化相机，确保PreviewView已完全准备好
-                previewView.post(() -> {
-                    if (isAdded() && !isDetached() && !isRemoving()) {
-                        startCamera();
-                    }
-                });
+                startCamera();
             } else {
                 Toast.makeText(requireContext(), "需要相机权限才能使用此功能", Toast.LENGTH_SHORT).show();
                 requireActivity().finish();
@@ -375,41 +382,55 @@ public class CameraFragment extends Fragment implements SensorEventListener {
 
 
     private void drawPointOnImage(float[] point) {
-        // 在图片上绘制选中的点
-        ImageView marker = new ImageView(requireContext());
-        marker.setImageResource(R.drawable.ic_point_marker);
-        marker.setId(View.generateViewId());
+        try {
+            // 在图片上绘制选中的点
+            ImageView marker = new ImageView(requireContext());
+            marker.setImageResource(R.drawable.ic_point_marker);
+            marker.setId(View.generateViewId());
 
-        // 获取photoPreview的父视图（MaterialCardView）
-        ViewGroup cardView = (ViewGroup) photoPreview.getParent();
+            // 获取photoPreview的父视图 - MaterialCardView
+            ViewGroup cardView = (ViewGroup) photoPreview.getParent();
 
-        // 创建相对布局参数
-        android.widget.FrameLayout.LayoutParams params = new android.widget.FrameLayout.LayoutParams(
-                ViewGroup.LayoutParams.WRAP_CONTENT,
-                ViewGroup.LayoutParams.WRAP_CONTENT
-        );
+            // 设置标记的大小
+            int markerSize = getResources().getDimensionPixelSize(R.dimen.point_marker_size);
 
-        // 设置标记的大小
-        int markerSize = getResources().getDimensionPixelSize(R.dimen.point_marker_size);
-        params.width = markerSize;
-        params.height = markerSize;
+            // 创建布局参数
+            ViewGroup.LayoutParams params = new ViewGroup.LayoutParams(
+                    markerSize,
+                    markerSize
+            );
 
-        // 计算标记的位置，考虑到标记的大小和图片的实际显示区域
-        float[] adjustedPoint = adjustPointToPhotoPreview(point);
-        params.leftMargin = (int) adjustedPoint[0] - markerSize / 2;
-        params.topMargin = (int) adjustedPoint[1] - markerSize / 2;
+            // 将标记添加到与photoPreview相同的父视图中
+            cardView.addView(marker, params);
 
-        // 添加标记到MaterialCardView
-        cardView.addView(marker, params);
-        marker.bringToFront();
+            // 设置标记的位置，使其覆盖在photoPreview上的触摸点
+            marker.setX(point[0] - markerSize / 2);
+            marker.setY(point[1] - markerSize / 2);
+
+            // 确保标记在最上层显示
+            marker.bringToFront();
+            cardView.invalidate();
+        } catch (Exception e) {
+            Toast.makeText(requireContext(), "添加标记失败: " + e.getMessage(), Toast.LENGTH_SHORT).show();
+        }
+
     }
+
 
     private float[] adjustPointToPhotoPreview(float[] point) {
         // 获取图片在ImageView中的实际显示区域
+        if (photoPreview.getDrawable() == null) {
+            return point; // 如果没有图片，直接返回原始坐标
+        }
+
         float imageWidth = photoPreview.getDrawable().getIntrinsicWidth();
         float imageHeight = photoPreview.getDrawable().getIntrinsicHeight();
         float viewWidth = photoPreview.getWidth();
         float viewHeight = photoPreview.getHeight();
+
+        if (imageWidth <= 0 || imageHeight <= 0 || viewWidth <= 0 || viewHeight <= 0) {
+            return point; // 防止除以零错误
+        }
 
         // 计算缩放比例
         float scale = Math.min(viewWidth / imageWidth, viewHeight / imageHeight);
@@ -422,10 +443,63 @@ public class CameraFragment extends Fragment implements SensorEventListener {
         float offsetX = (viewWidth - scaledWidth) / 2;
         float offsetY = (viewHeight - scaledHeight) / 2;
 
-        // 调整点的坐标
+        // 调整点的坐标，修正计算方法
         return new float[]{
-                point[0] * (scaledWidth / viewWidth) + offsetX,
-                point[1] * (scaledHeight / viewHeight) + offsetY
+                offsetX + (point[0] / viewWidth) * scaledWidth,
+                offsetY + (point[1] / viewHeight) * scaledHeight
         };
+    }
+
+    /**
+     * 显示提交参数的对话框
+     * @param imageUri 图片URI
+     * @param points 选中的点
+     * @param gravityData 重力传感器数据
+     * @param distance 已知距离
+     */
+    private void showSubmitParamsDialog(Uri imageUri, List<float[]> points, float[] gravityData, float distance) {
+        // 创建一个包含ScrollView的TextView，以便显示大量文本
+        ScrollView scrollView = new ScrollView(requireContext());
+        TextView textView = new TextView(requireContext());
+        textView.setPadding(30, 30, 30, 30);
+        scrollView.addView(textView);
+
+        // 构建参数信息文本
+        StringBuilder paramsInfo = new StringBuilder();
+        paramsInfo.append("===== 提交参数信息 =====\n\n");
+
+        // 图片信息
+        paramsInfo.append("【图片信息】\n");
+        paramsInfo.append("URI: ").append(imageUri.toString()).append("\n\n");
+
+        // 选中的点信息
+        paramsInfo.append("【选中的点坐标】\n");
+        for (int i = 0; i < points.size(); i++) {
+            float[] point = points.get(i);
+            paramsInfo.append("点").append(i + 1).append(": (");
+            paramsInfo.append(String.format(Locale.CHINA, "%.2f", point[0])).append(", ");
+            paramsInfo.append(String.format(Locale.CHINA, "%.2f", point[1])).append(")\n");
+        }
+        paramsInfo.append("\n");
+
+        // 重力传感器数据
+        paramsInfo.append("【重力传感器数据】\n");
+        paramsInfo.append("X: ").append(String.format(Locale.CHINA, "%.4f", gravityData[0])).append("\n");
+        paramsInfo.append("Y: ").append(String.format(Locale.CHINA, "%.4f", gravityData[1])).append("\n");
+        paramsInfo.append("Z: ").append(String.format(Locale.CHINA, "%.4f", gravityData[2])).append("\n\n");
+
+        // 已知距离
+        paramsInfo.append("【已知距离】\n");
+        paramsInfo.append(distance).append(" 厘米\n");
+
+        // 设置文本
+        textView.setText(paramsInfo.toString());
+
+        // 创建并显示对话框
+        new AlertDialog.Builder(requireContext())
+                .setTitle("测量参数确认")
+                .setView(scrollView)
+                .setPositiveButton("确认提交", null)
+                .show();
     }
 }
