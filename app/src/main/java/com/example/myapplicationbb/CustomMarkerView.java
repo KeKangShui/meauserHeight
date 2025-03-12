@@ -50,15 +50,15 @@ public class CustomMarkerView extends MarkerView {
                 HistoryFragment.MeasurementRecord record = (HistoryFragment.MeasurementRecord) data;
                 if (record.date != null) {
                     dateTextView.setText("日期: " + record.date);
-                    heightTextView.setText(String.format("身高: %.3f毫米", e.getY()));
+                    heightTextView.setText(String.format("身高: %.1f厘米", e.getY()));
                 } else {
                     dateTextView.setText("日期: 未知");
-                    heightTextView.setText(String.format("身高: %.3f毫米", e.getY()));
+                    heightTextView.setText(String.format("身高: %.1f厘米", e.getY()));
                 }
             } else {
                 // 如果数据不是预期类型，显示默认值
                 dateTextView.setText("日期: --");
-                heightTextView.setText(String.format("身高: %.3f毫米", e.getY()));
+                heightTextView.setText(String.format("身高: %.1f厘米", e.getY()));
             }
         } catch (Exception ex) {
             // 捕获并处理所有可能的异常

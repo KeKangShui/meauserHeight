@@ -80,8 +80,14 @@ public class HistoryFragment extends Fragment {
         heightChart.setNoDataText("暂无数据");
         heightChart.setNoDataTextColor(Color.GRAY);
         heightChart.animateX(1500);
-        heightChart.setMinOffset(15f);
-        heightChart.setExtraOffsets(15f, 20f, 15f, 15f);
+
+        // 增加顶部间距，解决空间拥挤问题
+        heightChart.setMinOffset(30f);
+        heightChart.setExtraOffsets(15f, 40f, 15f, 15f);
+
+        // 启用水平滚动
+        heightChart.setDragXEnabled(true);
+        heightChart.setVisibleXRangeMaximum(5f); // 一次最多显示5个数据点
         heightChart.setHighlightPerDragEnabled(true);
         heightChart.setHighlightPerTapEnabled(true);
 
@@ -210,8 +216,10 @@ public class HistoryFragment extends Fragment {
             LineDataSet dataSet = new LineDataSet(entries, "身高变化趋势");
             dataSet.setColor(getResources().getColor(R.color.primary));
             dataSet.setCircleColor(getResources().getColor(R.color.primary));
-            dataSet.setLineWidth(2f); // 增加线宽
-            dataSet.setCircleRadius(4f); // 增加圆点大小
+            dataSet.setLineWidth(2.5f); // 增加线宽
+            dataSet.setCircleRadius(5f); // 增加圆点大小
+            dataSet.setCircleHoleRadius(2.5f); // 设置圆点内部空洞大小
+            dataSet.setDrawCircleHole(true); // 绘制圆点内部空洞
             dataSet.setDrawValues(true);
             dataSet.setValueTextSize(10f); // 增加数值文字大小
             dataSet.setValueTextColor(Color.DKGRAY);
@@ -219,17 +227,18 @@ public class HistoryFragment extends Fragment {
             // 优化曲线显示
             if (entries.size() > 2) {
                 dataSet.setMode(LineDataSet.Mode.CUBIC_BEZIER);
-                dataSet.setCubicIntensity(0.2f); // 调整曲线平滑度
+                dataSet.setCubicIntensity(0.15f); // 调整曲线平滑度，降低一点使曲线更自然
             } else {
                 dataSet.setMode(LineDataSet.Mode.LINEAR);
             }
 
             dataSet.setDrawFilled(true);
             dataSet.setFillColor(getResources().getColor(R.color.primary_dark));
-            dataSet.setFillAlpha(40); // 增加填充透明度
+            dataSet.setFillAlpha(50); // 增加填充透明度
             dataSet.setHighlightEnabled(true);
             dataSet.setDrawHorizontalHighlightIndicator(false);
             dataSet.setHighLightColor(getResources().getColor(R.color.accent));
+            dataSet.setHighlightLineWidth(1.5f); // 设置高亮线宽度
 
             LineData lineData = new LineData(dataSet);
             lineData.setValueFormatter(new ValueFormatter() {
@@ -348,7 +357,7 @@ public class HistoryFragment extends Fragment {
 
             void bind(MeasurementRecord record, OnItemClickListener listener) {
                 dateText.setText("测量日期：" + record.date);
-                heightText.setText(String.format("身高：%.3f毫米", record.height));
+                heightText.setText(String.format("身高：%.1f厘米", record.height));
                 itemView.setOnClickListener(v -> listener.onItemClick(record));
             }
         }
