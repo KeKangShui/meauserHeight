@@ -194,8 +194,10 @@ public class CameraFragment extends Fragment implements SensorEventListener {
                     }
                 });
 
+        // 检查相机权限并启动相机
         if (allPermissionsGranted()) {
-            startCamera();
+            // 延迟一小段时间再启动相机，确保UI已完全加载
+            mainHandler.postDelayed(this::startCamera, 100);
         } else {
             ActivityCompat.requestPermissions(requireActivity(), REQUIRED_PERMISSIONS, REQUEST_CODE_PERMISSIONS);
         }
@@ -480,28 +482,69 @@ public class CameraFragment extends Fragment implements SensorEventListener {
 
     private void drawPointOnImage(float[] point) {
         try {
+            // 获取photoPreview的父视图 - MaterialCardView
+            ViewGroup cardView = (ViewGroup) photoPreview.getParent();
+            if (cardView == null) return;
+
+            // 设置标记的大小
+            int markerSize = getResources().getDimensionPixelSize(R.dimen.point_marker_size);
+
+
+            // 调整点的位置，考虑图片在ImageView中的实际显示情况
+            float[] adjustedPoint;
+
+            // 检查点是否已经是归一化坐标（确认选点后的情况）
+            if (point[0] >= 0 && point[0] <= 1 && point[1] >= 0 && point[1] <= 1) {
+                // 点已经是归一化坐标，直接转换为屏幕坐标
+                float imageWidth = photoPreview.getDrawable().getIntrinsicWidth();
+                float imageHeight = photoPreview.getDrawable().getIntrinsicHeight();
+                float viewWidth = photoPreview.getWidth();
+                float viewHeight = photoPreview.getHeight();
+
+                ImageView.ScaleType scaleType = photoPreview.getScaleType();
+
+                if (scaleType == ImageView.ScaleType.CENTER_CROP) {
+                    float scale = Math.max(viewWidth / imageWidth, viewHeight / imageHeight);
+                    float scaledWidth = imageWidth * scale;
+                    float scaledHeight = imageHeight * scale;
+                    float offsetX = (viewWidth - scaledWidth) / 2;
+                    float offsetY = (viewHeight - scaledHeight) / 2;
+
+                    adjustedPoint = new float[]{
+                            offsetX + point[0] * scaledWidth,
+                            offsetY + point[1] * scaledHeight
+                    };
+                } else {
+                    // 默认使用FIT_CENTER逻辑
+                    float scale = Math.min(viewWidth / imageWidth, viewHeight / imageHeight);
+                    float scaledWidth = imageWidth * scale;
+                    float scaledHeight = imageHeight * scale;
+                    float offsetX = (viewWidth - scaledWidth) / 2;
+                    float offsetY = (viewHeight - scaledHeight) / 2;
+
+                    adjustedPoint = new float[]{
+                            offsetX + point[0] * scaledWidth,
+                            offsetY + point[1] * scaledHeight
+                    };
+                }
+            } else {
+                // 点是原始像素坐标，需要调整
+                adjustedPoint = adjustPointToPhotoPreview(point);
+            }
+
             // 在图片上绘制选中的点
             ImageView marker = new ImageView(requireContext());
             marker.setImageResource(R.drawable.ic_point_marker);
             marker.setId(View.generateViewId());
 
-            // 获取photoPreview的父视图 - MaterialCardView
-            ViewGroup cardView = (ViewGroup) photoPreview.getParent();
-
-            // 设置标记的大小
-            int markerSize = getResources().getDimensionPixelSize(R.dimen.point_marker_size);
-
             // 创建布局参数
-            ViewGroup.LayoutParams params = new ViewGroup.LayoutParams(
+            ConstraintLayout.LayoutParams params = new ConstraintLayout.LayoutParams(
                     markerSize,
                     markerSize
             );
 
             // 将标记添加到与photoPreview相同的父视图中
             cardView.addView(marker, params);
-
-            // 调整点的位置，考虑图片在ImageView中的实际显示情况
-            float[] adjustedPoint = adjustPointToPhotoPreview(point);
 
             // 设置标记的位置，使其覆盖在photoPreview上的触摸点
             marker.setX(adjustedPoint[0] - markerSize / 2);
@@ -510,12 +553,37 @@ public class CameraFragment extends Fragment implements SensorEventListener {
             // 确保标记在最上层显示
             marker.bringToFront();
             cardView.invalidate();
+
+            // 添加标记点击事件，允许用户移除标记
+            marker.setOnClickListener(v -> {
+                // 如果已经确认选点，则不允许移除
+                if (!confirmPointsButton.isEnabled()) {
+                    Toast.makeText(requireContext(), "已确认选点，无法移除", Toast.LENGTH_SHORT).show();
+                    return;
+                }
+
+                // 从视图中移除标记
+                cardView.removeView(marker);
+
+                // 从选中点列表中移除对应的点
+                for (int i = 0; i < selectedPoints.size(); i++) {
+                    float[] p = selectedPoints.get(i);
+                    // 使用近似比较，因为浮点数可能有精度误差
+                    if (Math.abs(p[0] - point[0]) < 0.01 && Math.abs(p[1] - point[1]) < 0.01) {
+                        selectedPoints.remove(i);
+                        break;
+                    }
+                }
+
+                // 更新UI状态
+                if (selectedPoints.size() < 2) {
+                    confirmPointsButton.setVisibility(View.GONE);
+                }
+            });
         } catch (Exception e) {
             Toast.makeText(requireContext(), "添加标记失败: " + e.getMessage(), Toast.LENGTH_SHORT).show();
         }
-
     }
-
 
     private float[] adjustPointToPhotoPreview(float[] point) {
         // 获取图片在ImageView中的实际显示区域
@@ -532,27 +600,68 @@ public class CameraFragment extends Fragment implements SensorEventListener {
             return point; // 防止除以零错误
         }
 
-        // 计算缩放比例
-        float scale = Math.min(viewWidth / imageWidth, viewHeight / imageHeight);
+        // 获取ImageView的ScaleType
+        ImageView.ScaleType scaleType = photoPreview.getScaleType();
 
-        // 计算图片在ImageView中的实际显示尺寸
-        float scaledWidth = imageWidth * scale;
-        float scaledHeight = imageHeight * scale;
+        // 根据不同的ScaleType计算坐标
+        if (scaleType == ImageView.ScaleType.CENTER_CROP) {
+            // 计算缩放比例
+            float scale = Math.max(viewWidth / imageWidth, viewHeight / imageHeight);
 
-        // 计算图片在ImageView中的偏移量
-        float offsetX = (viewWidth - scaledWidth) / 2;
-        float offsetY = (viewHeight - scaledHeight) / 2;
+            // 计算图片在ImageView中的实际显示尺寸
+            float scaledWidth = imageWidth * scale;
+            float scaledHeight = imageHeight * scale;
 
-        // 检查点是否在图片显示区域内
-        if (point[0] < offsetX || point[0] > offsetX + scaledWidth ||
-                point[1] < offsetY || point[1] > offsetY + scaledHeight) {
-            // 如果点不在图片显示区域内，将其限制在图片边界内
-            point[0] = Math.max(offsetX, Math.min(point[0], offsetX + scaledWidth));
-            point[1] = Math.max(offsetY, Math.min(point[1], offsetY + scaledHeight));
+            // 计算图片在ImageView中的偏移量
+            float offsetX = (viewWidth - scaledWidth) / 2;
+            float offsetY = (viewHeight - scaledHeight) / 2;
+
+            // 将触摸坐标转换为图片上的归一化坐标
+            float normalizedX = (point[0] - offsetX) / scaledWidth;
+            float normalizedY = (point[1] - offsetY) / scaledHeight;
+
+            // 确保坐标在[0,1]范围内
+            normalizedX = Math.max(0, Math.min(normalizedX, 1));
+            normalizedY = Math.max(0, Math.min(normalizedY, 1));
+
+            // 更新选中点的归一化坐标（用于API提交）
+            if (selectedPoints.size() > 0 && selectedPoints.get(selectedPoints.size() - 1) == point) {
+                selectedPoints.get(selectedPoints.size() - 1)[0] = normalizedX;
+                selectedPoints.get(selectedPoints.size() - 1)[1] = normalizedY;
+            }
+
+            // 返回调整后的像素坐标（用于显示标记）
+            return new float[]{offsetX + normalizedX * scaledWidth, offsetY + normalizedY * scaledHeight};
+        } else {
+            // 默认使用FIT_CENTER逻辑
+            // 计算缩放比例
+            float scale = Math.min(viewWidth / imageWidth, viewHeight / imageHeight);
+
+            // 计算图片在ImageView中的实际显示尺寸
+            float scaledWidth = imageWidth * scale;
+            float scaledHeight = imageHeight * scale;
+
+            // 计算图片在ImageView中的偏移量
+            float offsetX = (viewWidth - scaledWidth) / 2;
+            float offsetY = (viewHeight - scaledHeight) / 2;
+
+            // 将触摸坐标转换为图片上的归一化坐标
+            float normalizedX = (point[0] - offsetX) / scaledWidth;
+            float normalizedY = (point[1] - offsetY) / scaledHeight;
+
+            // 确保坐标在[0,1]范围内
+            normalizedX = Math.max(0, Math.min(normalizedX, 1));
+            normalizedY = Math.max(0, Math.min(normalizedY, 1));
+
+            // 更新选中点的归一化坐标（用于API提交）
+            if (selectedPoints.size() > 0 && selectedPoints.get(selectedPoints.size() - 1) == point) {
+                selectedPoints.get(selectedPoints.size() - 1)[0] = normalizedX;
+                selectedPoints.get(selectedPoints.size() - 1)[1] = normalizedY;
+            }
+
+            // 返回调整后的像素坐标（用于显示标记）
+            return new float[]{offsetX + normalizedX * scaledWidth, offsetY + normalizedY * scaledHeight};
         }
-
-        // 直接返回调整后的坐标，因为我们已经在drawPointOnImage中使用了这些坐标
-        return point;
     }
 
 
